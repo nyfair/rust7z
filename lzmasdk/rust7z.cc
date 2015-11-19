@@ -112,10 +112,24 @@ PROPVARIANT prop;
 vector<CLSID> codecs;
 vector<wstring> exts;
 vector<wstring> types;
+CMyComPtr<IInArchive> archive;
 
 extern "C" {
 	BOOL init7z() {
-		dll = LoadLibraryA("7z.dll");
+		dll = LoadLibraryW(L"7z.dll");
+		if (dll == NULL) {
+			HKEY hKey = NULL;
+			if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\7-Zip", 0, NULL,
+				REG_OPTION_NON_VOLATILE, KEY_READ, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+				wchar_t regPath[fnameLen];
+				DWORD cbData = sizeof(regPath);
+				if (RegQueryValueExW(hKey, L"Path", 0, 0, (LPBYTE)regPath, &cbData) == ERROR_SUCCESS) {
+					wstring regDll = regPath;
+					regDll += L"7z.dll";
+					dll = LoadLibraryW(regDll.c_str());
+				}
+			}
+		}
 		if (dll == NULL) {
 			printf("7z.dll is missing");
 			return FALSE;
@@ -151,29 +165,28 @@ extern "C" {
 	const wchar_t* getArchiveType(UINT32 index) {
 		return types[index].c_str();
 	}
+
+	BOOL open(wchar_t *input) {
+		CMyComPtr<IInStream> file;
+		OpenCallbackImp *openCallbackSpec = new OpenCallbackImp;
+		CMyComPtr<IArchiveOpenCallback> openCallback = openCallbackSpec;
+		for (UINT32 i = 0; i < numf; i++) {
+			FileStreamImp *fileSpec = new FileStreamImp(input);
+			file = fileSpec;
+			createObject(&codecs[i], &IID_IInArchive, (void **)&archive);
+			if (archive->Open(file, &scanSize, openCallback) == S_OK) {
+				return TRUE;
+				break;
+			} else {
+				archive->Close();
+			}
+		}
+		return FALSE;
+	}
 }
 
-/*int wmain(int argc, wchar_t *argv[]) {
+int wmain(int argc, wchar_t *argv[]) {
 	init7z();
-	CMyComPtr<IInArchive> archive;
-	CMyComPtr<IInStream> file;
-	OpenCallbackImp *openCallbackSpec = new OpenCallbackImp;
-	CMyComPtr<IArchiveOpenCallback> openCallback = openCallbackSpec;
-	bool valid = false;
-	for (UINT32 i = 0; i < numf; i++) {
-		FileStreamImp *fileSpec = new FileStreamImp(L"test.7z");
-		file = fileSpec;
-		createObject(&codecs[i], &IID_IInArchive, (void **)&archive);
-		if (archive->Open(file, &scanSize, openCallback) == S_OK) {
-			valid = true;
-			break;
-		} else {
-			archive->Close();
-		}
-	}
-	if (!valid)
-		return 1;
-
 	vector<arc> files;
 	UINT32 fileCount = 0;
 	UINT32 fullSize = 0;
@@ -213,4 +226,4 @@ extern "C" {
 	FILE *output = fopen("test","wb");
 	fwrite(cache, fullSize, 1, output);
 	return 0;
-}*/
+}
