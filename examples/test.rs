@@ -17,11 +17,17 @@ fn w2u(wstr: *const u16) -> String {
 
 fn main() {
 	unsafe {
+		// info
 		rust7z::init7z();
 		let fmt_count = rust7z::getFormatCount();
 		println!("Support archive formats count:{}", fmt_count);
 		for i in 0..fmt_count {
 			println!("{}:{}", w2u(rust7z::getArchiveType(i)), w2u(rust7z::getArchiveExts(i)));
 		}
+
+		// extract
+		rust7z::open(u2w("examples/test.7z"));
+		let archive = rust7z::getFileList();
+		println!("{}", archive.file_count);
 	}
 }

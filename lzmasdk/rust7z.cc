@@ -100,10 +100,15 @@ public:
 const UINT64 scanSize = 1 << 23;
 const UINT32 fnameLen = 1 << 8;
 
-struct arc {
+struct arcItem {
 	wchar_t path[fnameLen];
 	BOOL isDir;
 	UINT32 size;
+};
+
+struct arcFile {
+	UINT32 fileCount;
+	vector<arcItem> files;
 };
 
 HMODULE dll;
@@ -183,47 +188,43 @@ extern "C" {
 		}
 		return FALSE;
 	}
-}
 
-int wmain(int argc, wchar_t *argv[]) {
-	init7z();
-	vector<arc> files;
-	UINT32 fileCount = 0;
-	UINT32 fullSize = 0;
-	archive->GetNumberOfItems(&fileCount);
-	for (UINT32 i = 0; i < fileCount; i++) {
-		arc file;
-		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
-		archive->GetProperty(i, kpidPath, &prop);
-		memcpy(file.path, prop.bstrVal, fnameLen);
-		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
-		archive->GetProperty(i, kpidIsDir, &prop);
-		file.isDir = prop.boolVal;
-		if (file.isDir) {
-			file.size = 0;
-		} else {
-			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
-			archive->GetProperty(i, kpidSize, &prop);
-			file.size = prop.ulVal;
-			fullSize += file.size;
-		}
-		files.push_back(file);
-	}
-	
-	extractCallbackImp *extractCallbackSpec = new extractCallbackImp;
-	CMyComPtr<IArchiveExtractCallback> extractCallback(extractCallbackSpec);
-	char *cache = (char*)LocalAlloc(LMEM_FIXED, fullSize);
-	if (cache == NULL) {
-		printf("Insufficient Memory");
+	void close() {
 		archive->Close();
-		return 1;
 	}
-	extractCallbackSpec->Init(cache, fullSize);
-	UINT32 index[2] = { 0,1 };
-	archive->Extract(index, 2, false, extractCallback);
-	archive->Close();
 
-	FILE *output = fopen("test","wb");
-	fwrite(cache, fullSize, 1, output);
-	return 0;
+	arcFile getFileList() {
+		arcFile arc;
+		UINT32 fileCount = 0;
+		UINT32 fullSize = 0;
+		archive->GetNumberOfItems(&fileCount);
+		arc.fileCount = fileCount;
+		for (UINT32 i = 0; i < fileCount; i++) {
+			arcItem file;
+			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
+			archive->GetProperty(i, kpidPath, &prop);
+			memcpy(file.path, prop.bstrVal, fnameLen);
+			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
+			archive->GetProperty(i, kpidIsDir, &prop);
+			file.isDir = prop.boolVal;
+			if (file.isDir) {
+				file.size = 0;
+			} else {
+				VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
+				archive->GetProperty(i, kpidSize, &prop);
+				file.size = prop.ulVal;
+				fullSize += file.size;
+			}
+			arc.files.push_back(file);
+		}
+		return arc;
+	}
+
+	void extractToBuf(char* buf, UINT32 size) {
+		extractCallbackImp *extractCallbackSpec = new extractCallbackImp;
+		CMyComPtr<IArchiveExtractCallback> extractCallback(extractCallbackSpec);
+		extractCallbackSpec->Init(buf, size);
+		UINT32 index[1] = { 0 };
+		archive->Extract(index, 1, false, extractCallback);
+	}
 }
