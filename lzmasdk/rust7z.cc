@@ -17,11 +17,11 @@ Func_GetHandlerProperty2 getHandlerProperty2;
 
 class MemOutStream : public ISequentialOutStream, public CMyUnknownImp {
 public:
-	UINT32 m_iPos;
+	UINT64 m_iPos;
 	char* m_pBuf;
-	UINT32 m_nBufSize;
+	UINT64 m_nBufSize;
 
-	void Init(char* pBuf, UINT32 nBufSize) {
+	void Init(char* pBuf, UINT64 nBufSize) {
 		m_iPos = 0;
 		m_pBuf = pBuf;
 		m_nBufSize = nBufSize;
@@ -45,9 +45,9 @@ public:
 class extractCallbackImp : public IArchiveExtractCallback, public CMyUnknownImp {
 public:
 	char* m_pBuf;
-	UINT32 m_nBufSize;
+	UINT64 m_nBufSize;
 
-	void Init(char* pBuf, UINT32 nBufSize) {
+	void Init(char* pBuf, UINT64 nBufSize) {
 		m_pBuf = pBuf;
 		m_nBufSize = nBufSize;
 	}
@@ -99,16 +99,12 @@ public:
 
 const UINT64 scanSize = 1 << 23;
 const UINT32 fnameLen = 1 << 8;
+const UINT32 entrySize = 16;
 
 struct arcItem {
-	wchar_t path[fnameLen];
 	BOOL isDir;
 	UINT32 size;
-};
-
-struct arcFile {
-	UINT32 fileCount;
-	vector<arcItem> files;
+	wchar_t *path;
 };
 
 HMODULE dll;
@@ -171,7 +167,7 @@ extern "C" {
 		return types[index].c_str();
 	}
 
-	BOOL open(wchar_t *input) {
+	UINT32 openAndGetFileCount(wchar_t *input) {
 		CMyComPtr<IInStream> file;
 		OpenCallbackImp *openCallbackSpec = new OpenCallbackImp;
 		CMyComPtr<IArchiveOpenCallback> openCallback = openCallbackSpec;
@@ -180,51 +176,44 @@ extern "C" {
 			file = fileSpec;
 			createObject(&codecs[i], &IID_IInArchive, (void **)&archive);
 			if (archive->Open(file, &scanSize, openCallback) == S_OK) {
-				return TRUE;
+				UINT32 fileCount;
+				archive->GetNumberOfItems(&fileCount);
+				return fileCount;
 				break;
 			} else {
 				archive->Close();
 			}
 		}
-		return FALSE;
+		return 0;
 	}
 
 	void close() {
 		archive->Close();
 	}
 
-	arcFile getFileList() {
-		arcFile arc;
-		UINT32 fileCount = 0;
-		UINT32 fullSize = 0;
-		archive->GetNumberOfItems(&fileCount);
-		arc.fileCount = fileCount;
-		for (UINT32 i = 0; i < fileCount; i++) {
-			arcItem file;
+	arcItem getFileInfo(UINT32 index) {
+		arcItem file;
+		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
+		archive->GetProperty(index, kpidIsDir, &prop);
+		file.isDir = prop.boolVal;
+		if (file.isDir) {
+			file.size = 0;
+		} else {
 			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
-			archive->GetProperty(i, kpidPath, &prop);
-			memcpy(file.path, prop.bstrVal, fnameLen);
-			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
-			archive->GetProperty(i, kpidIsDir, &prop);
-			file.isDir = prop.boolVal;
-			if (file.isDir) {
-				file.size = 0;
-			} else {
-				VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
-				archive->GetProperty(i, kpidSize, &prop);
-				file.size = prop.ulVal;
-				fullSize += file.size;
-			}
-			arc.files.push_back(file);
+			archive->GetProperty(index, kpidSize, &prop);
+			file.size = prop.ulVal;
 		}
-		return arc;
+		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
+		archive->GetProperty(index, kpidPath, &prop);
+		file.path = prop.bstrVal;
+		return file;
 	}
 
-	void extractToBuf(char* buf, UINT32 size) {
+	void extractToBuf(char* buf, UINT32 index, UINT64 size) {
 		extractCallbackImp *extractCallbackSpec = new extractCallbackImp;
 		CMyComPtr<IArchiveExtractCallback> extractCallback(extractCallbackSpec);
 		extractCallbackSpec->Init(buf, size);
-		UINT32 index[1] = { 0 };
-		archive->Extract(index, 1, false, extractCallback);
+		UINT32 fullIndex[1] = { index };
+		archive->Extract(fullIndex, 1, false, extractCallback);
 	}
 }

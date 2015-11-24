@@ -2,9 +2,12 @@ extern crate rust7z;
 
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::io::prelude::*;
+use std::io::BufWriter;
+use std::fs::File;
 
-fn u2w(u8str: &str) -> *const u16 {
-	OsStr::new(u8str).encode_wide().chain(Some(0).into_iter()).collect::<Vec<_>>().as_ptr()
+fn u2w(u8str: &str) -> Vec<u16> {
+	OsStr::new(u8str).encode_wide().chain(Some(0).into_iter()).collect::<Vec<_>>()
 }
 
 fn w2u(wstr: *const u16) -> String {
@@ -26,8 +29,20 @@ fn main() {
 		}
 
 		// extract
-		rust7z::open(u2w("examples/test.7z"));
-		let archive = rust7z::getFileList();
-		println!("{}", archive.file_count);
+		let k = u2w("examples/test.7z");
+		let file_count = rust7z::openAndGetFileCount(k.as_ptr());
+		println!("File Count: {}", file_count);
+		for i in 0..file_count {
+			let file = rust7z::getFileInfo(i);
+			let fname = w2u(file.path);
+			println!("{}: {}", fname, file.size);
+			let buf = vec![0; file.size as usize];
+			rust7z::extractToBuf(buf.as_ptr(), i, file.size as u64);
+			let output = File::create(fname).unwrap();
+			let mut writer = BufWriter::new(output);
+			writer.write(&buf).unwrap();
+			writer.flush().unwrap();
+		}
+		rust7z::close();
 	}
 }
