@@ -7,9 +7,9 @@
 
 using namespace std;
 extern "C" {
-	typedef HRESULT(WINAPI *Func_CreateObject)(const GUID *clsID, const GUID *iid, void **outObject);
-	typedef HRESULT(WINAPI *Func_GetNumberOfFormats)(UINT32 *numFormats);
-	typedef HRESULT(WINAPI *Func_GetHandlerProperty2)(UINT32 formatIndex, PROPID propID, PROPVARIANT *value);
+	typedef HRESULT(WINAPI* Func_CreateObject)(const GUID* clsID, const GUID* iid, void* *outObject);
+	typedef HRESULT(WINAPI* Func_GetNumberOfFormats)(UINT32* numFormats);
+	typedef HRESULT(WINAPI* Func_GetHandlerProperty2)(UINT32 formatIndex, PROPID propID, PROPVARIANT* value);
 }
 Func_CreateObject createObject;
 Func_GetNumberOfFormats getNumberOfFormats;
@@ -28,7 +28,7 @@ public:
 	}
 
 	MY_UNKNOWN_IMP
-	STDMETHOD(Write)(const void *data, UINT32 size, UINT32 *processedSize) {
+	STDMETHOD(Write)(const void* data, UINT32 size, UINT32* processedSize) {
 		memcpy(m_pBuf + m_iPos, data, size);
 		m_iPos += size;
 		return S_OK;
@@ -38,8 +38,8 @@ public:
 class OpenCallbackImp : public IArchiveOpenCallback, public CMyUnknownImp {
 public:
 	MY_UNKNOWN_IMP
-	STDMETHOD(SetTotal)(const UINT64 *files, const UINT64 *bytes) { return S_OK; }
-	STDMETHOD(SetCompleted)(const UINT64 *files, const UINT64 *bytes) { return S_OK; }
+	STDMETHOD(SetTotal)(const UINT64* files, const UINT64* bytes) { return S_OK; }
+	STDMETHOD(SetCompleted)(const UINT64* files, const UINT64* bytes) { return S_OK; }
 };
 
 class extractCallbackImp : public IArchiveExtractCallback, public CMyUnknownImp {
@@ -54,9 +54,9 @@ public:
 
 	MY_UNKNOWN_IMP
 	STDMETHOD(SetTotal)(UINT64 size) { return S_OK; }
-	STDMETHOD(SetCompleted)(const UINT64 *completeValue) { return S_OK; }
+	STDMETHOD(SetCompleted)(const UINT64* completeValue) { return S_OK; }
 
-	STDMETHOD(GetStream)(UInt32 index, ISequentialOutStream **outStream, Int32 askExtractMode) {
+	STDMETHOD(GetStream)(UInt32 index, ISequentialOutStream* *outStream, Int32 askExtractMode) {
 		MemOutStream* pRealStream = new MemOutStream;
 		pRealStream->AddRef();
 		pRealStream->Init(m_pBuf, m_nBufSize);
@@ -80,14 +80,14 @@ public:
 		CloseHandle(hFile);
 	}
 
-	STDMETHOD(Read)(void *data, UINT32 size, UINT32 *processedSize) {
+	STDMETHOD(Read)(void* data, UINT32 size, UINT32* processedSize) {
 		DWORD resultSize = 0;
 		BOOL res = ReadFile(hFile, data, size, &resultSize, NULL);
 			*processedSize = resultSize;
 		return res ? S_OK : E_FAIL;
 	}
 
-	STDMETHOD(Seek)(INT64 offset, UINT32 seekOrigin, UINT64 *newPosition) {
+	STDMETHOD(Seek)(INT64 offset, UINT32 seekOrigin, UINT64* newPosition) {
 		LARGE_INTEGER liDistanceToMove, liNewFilePointer;
 		liDistanceToMove.QuadPart = offset;
 		BOOL res = SetFilePointerEx(hFile, liDistanceToMove, &liNewFilePointer, static_cast<DWORD>(seekOrigin));
@@ -104,7 +104,7 @@ const UINT32 entrySize = 16;
 struct arcItem {
 	BOOL isDir;
 	UINT32 size;
-	wchar_t *path;
+	wchar_t* path;
 };
 
 HMODULE dll;
@@ -167,14 +167,14 @@ extern "C" {
 		return types[index].c_str();
 	}
 
-	UINT32 openAndGetFileCount(wchar_t *input) {
+	UINT32 openAndGetFileCount(wchar_t* input) {
 		CMyComPtr<IInStream> file;
-		OpenCallbackImp *openCallbackSpec = new OpenCallbackImp;
+		OpenCallbackImp* openCallbackSpec = new OpenCallbackImp;
 		CMyComPtr<IArchiveOpenCallback> openCallback = openCallbackSpec;
 		for (UINT32 i = 0; i < numf; i++) {
-			FileStreamImp *fileSpec = new FileStreamImp(input);
+			FileStreamImp* fileSpec = new FileStreamImp(input);
 			file = fileSpec;
-			createObject(&codecs[i], &IID_IInArchive, (void **)&archive);
+			createObject(&codecs[i], &IID_IInArchive, (void* *)&archive);
 			if (archive->Open(file, &scanSize, openCallback) == S_OK) {
 				UINT32 fileCount;
 				archive->GetNumberOfItems(&fileCount);
@@ -210,7 +210,7 @@ extern "C" {
 	}
 
 	void extractToBuf(char* buf, UINT32 index, UINT64 size) {
-		extractCallbackImp *extractCallbackSpec = new extractCallbackImp;
+		extractCallbackImp* extractCallbackSpec = new extractCallbackImp;
 		CMyComPtr<IArchiveExtractCallback> extractCallback(extractCallbackSpec);
 		extractCallbackSpec->Init(buf, size);
 		UINT32 fullIndex[1] = { index };
