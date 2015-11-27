@@ -30,7 +30,7 @@ fn main() {
 
 		// extract
 		let k = u2w("examples/test.7z");
-		let file_count = rust7z::openAndGetFileCount(k.as_ptr());
+		let file_count = rust7z::open(k.as_ptr()).file_count;
 		println!("File Count: {}", file_count);
 		for i in 0..file_count {
 			let file = rust7z::getFileInfo(i);

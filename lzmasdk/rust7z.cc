@@ -7,7 +7,7 @@
 
 using namespace std;
 extern "C" {
-	typedef HRESULT(WINAPI* Func_CreateObject)(const GUID* clsID, const GUID* iid, void* *outObject);
+	typedef HRESULT(WINAPI* Func_CreateObject)(const GUID* clsID, const GUID* iid, void** outObject);
 	typedef HRESULT(WINAPI* Func_GetNumberOfFormats)(UINT32* numFormats);
 	typedef HRESULT(WINAPI* Func_GetHandlerProperty2)(UINT32 formatIndex, PROPID propID, PROPVARIANT* value);
 }
@@ -20,6 +20,7 @@ public:
 	UINT64 m_iPos;
 	char* m_pBuf;
 	UINT64 m_nBufSize;
+	BOOL write = TRUE;
 
 	void Init(char* pBuf, UINT64 nBufSize) {
 		m_iPos = 0;
@@ -29,7 +30,8 @@ public:
 
 	MY_UNKNOWN_IMP
 	STDMETHOD(Write)(const void* data, UINT32 size, UINT32* processedSize) {
-		memcpy(m_pBuf + m_iPos, data, size);
+		if (write)
+			memcpy(m_pBuf + m_iPos, data, size);
 		m_iPos += size;
 		return S_OK;
 	}
@@ -46,6 +48,7 @@ class extractCallbackImp : public IArchiveExtractCallback, public CMyUnknownImp 
 public:
 	char* m_pBuf;
 	UINT64 m_nBufSize;
+	MemOutStream* pRealStream;
 
 	void Init(char* pBuf, UINT64 nBufSize) {
 		m_pBuf = pBuf;
@@ -56,16 +59,20 @@ public:
 	STDMETHOD(SetTotal)(UINT64 size) { return S_OK; }
 	STDMETHOD(SetCompleted)(const UINT64* completeValue) { return S_OK; }
 
-	STDMETHOD(GetStream)(UInt32 index, ISequentialOutStream* *outStream, Int32 askExtractMode) {
-		MemOutStream* pRealStream = new MemOutStream;
+	STDMETHOD(GetStream)(UINT32 index, ISequentialOutStream** outStream, INT32 askExtractMode) {
+		pRealStream = new MemOutStream;
 		pRealStream->AddRef();
 		pRealStream->Init(m_pBuf, m_nBufSize);
 		*outStream = pRealStream;
 		return S_OK;
 	}
 
-	STDMETHOD(PrepareOperation)(Int32 askExtractMode) { return S_OK; }
-	STDMETHOD(SetOperationResult)(Int32 resultEOperationResult) { return S_OK; }
+	STDMETHOD(PrepareOperation)(INT32 askExtractMode) {
+		if (askExtractMode == NArchive::NExtract::NAskMode::kSkip)
+			pRealStream->write = FALSE;
+		return S_OK;
+	}
+	STDMETHOD(SetOperationResult)(INT32 resultEOperationResult) { return S_OK; }
 };
 
 class FileStreamImp : public IInStream, public CMyUnknownImp {
@@ -88,11 +95,11 @@ public:
 	}
 
 	STDMETHOD(Seek)(INT64 offset, UINT32 seekOrigin, UINT64* newPosition) {
-		LARGE_INTEGER liDistanceToMove, liNewFilePointer;
+		LARGE_INTEGER liDistanceToMove, liNewFilePoINTer;
 		liDistanceToMove.QuadPart = offset;
-		BOOL res = SetFilePointerEx(hFile, liDistanceToMove, &liNewFilePointer, static_cast<DWORD>(seekOrigin));
+		BOOL res = SetFilePointerEx(hFile, liDistanceToMove, &liNewFilePoINTer, static_cast<DWORD>(seekOrigin));
 		if (newPosition)
-			*newPosition = liNewFilePointer.QuadPart;
+			*newPosition = liNewFilePoINTer.QuadPart;
 		return res ? S_OK : E_FAIL;
 	}
 };
@@ -101,8 +108,14 @@ const UINT64 scanSize = 1 << 23;
 const UINT32 fnameLen = 1 << 8;
 const UINT32 entrySize = 16;
 
-struct arcItem {
-	BOOL isDir;
+struct ArcInfo {
+	INT32 format = -1;
+	UINT32 file_count;
+	BOOL is_solid;
+};
+
+struct ArcItem {
+	BOOL is_dir;
 	UINT32 size;
 	wchar_t* path;
 };
@@ -167,36 +180,39 @@ extern "C" {
 		return types[index].c_str();
 	}
 
-	UINT32 openAndGetFileCount(wchar_t* input) {
+	ArcInfo open(wchar_t* input) {
+		ArcInfo arc;
 		CMyComPtr<IInStream> file;
 		OpenCallbackImp* openCallbackSpec = new OpenCallbackImp;
 		CMyComPtr<IArchiveOpenCallback> openCallback = openCallbackSpec;
 		for (UINT32 i = 0; i < numf; i++) {
 			FileStreamImp* fileSpec = new FileStreamImp(input);
 			file = fileSpec;
-			createObject(&codecs[i], &IID_IInArchive, (void* *)&archive);
+			createObject(&codecs[i], &IID_IInArchive, (void**)&archive);
 			if (archive->Open(file, &scanSize, openCallback) == S_OK) {
-				UINT32 fileCount;
-				archive->GetNumberOfItems(&fileCount);
-				return fileCount;
+				archive->GetNumberOfItems(&arc.file_count);
+				arc.format = i;
+				VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
+				archive->GetArchiveProperty(kpidSolid, &prop);
+				arc.is_solid = prop.bVal;
 				break;
 			} else {
 				archive->Close();
 			}
 		}
-		return 0;
+		return arc;
 	}
 
 	void close() {
 		archive->Close();
 	}
 
-	arcItem getFileInfo(UINT32 index) {
-		arcItem file;
+	ArcItem getFileInfo(UINT32 index) {
+		ArcItem file;
 		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		archive->GetProperty(index, kpidIsDir, &prop);
-		file.isDir = prop.boolVal;
-		if (file.isDir) {
+		file.is_dir = prop.boolVal;
+		if (file.is_dir) {
 			file.size = 0;
 		} else {
 			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
@@ -216,4 +232,16 @@ extern "C" {
 		UINT32 fullIndex[1] = { index };
 		archive->Extract(fullIndex, 1, false, extractCallback);
 	}
+
+	/*int wmain(INT argc, wchar_t* argv) {
+		init7z();
+		ArcInfo arc = open(L"examples/test.7z");
+		for (UINT32 i = 0; i < arc.file_count; i++) {
+			ArcItem file = getFileInfo(i);
+			char* buf = (char*)malloc(file.size);
+			extractToBuf(buf, i, file.size);
+			free(buf);
+		}
+		close();
+	}*/
 }
