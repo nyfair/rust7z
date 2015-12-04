@@ -20,5 +20,5 @@ extern "C" {
 	pub fn open(archive: *const u16) -> ArcInfo;
 	pub fn close();
 	pub fn getFileInfo(index: u32) -> ArcItem;
-	pub fn extractToBuf(buf: *const u8, index: u32, size: u64);
+	pub fn extractToBuf(buf: *const u8, index: *const u32, num_of_file: u32);
 }

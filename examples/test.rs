@@ -28,21 +28,32 @@ fn main() {
 			println!("{}:{}", w2u(rust7z::getArchiveType(i)), w2u(rust7z::getArchiveExts(i)));
 		}
 
-		// extract
+		// extract one
 		let k = u2w("examples/test.7z");
 		let file_count = rust7z::open(k.as_ptr()).file_count;
 		println!("File Count: {}", file_count);
+		let mut vec = Vec::new();
+		let mut full_size = 0;
 		for i in 0..file_count {
 			let file = rust7z::getFileInfo(i);
 			let fname = w2u(file.path);
 			println!("{}: {}", fname, file.size);
 			let buf = vec![0; file.size as usize];
-			rust7z::extractToBuf(buf.as_ptr(), i, file.size as u64);
+			rust7z::extractToBuf(buf.as_ptr(), &i, 1);
 			let output = File::create(fname).unwrap();
 			let mut writer = BufWriter::new(output);
 			writer.write(&buf).unwrap();
 			writer.flush().unwrap();
+			vec.push(i);
+			full_size += file.size
 		}
+		// extract all(useful for solid archive)
+		let buf = vec![0; full_size as usize];
+		rust7z::extractToBuf(buf.as_ptr(), vec.as_ptr(), file_count);
+		let output = File::create("all.tmp").unwrap();
+		let mut writer = BufWriter::new(output);
+		writer.write(&buf).unwrap();
+		writer.flush().unwrap();
 		rust7z::close();
 	}
 }

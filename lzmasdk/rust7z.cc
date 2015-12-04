@@ -15,24 +15,22 @@ Func_CreateObject createObject;
 Func_GetNumberOfFormats getNumberOfFormats;
 Func_GetHandlerProperty2 getHandlerProperty2;
 
+UINT64 archive_offset;
 class MemOutStream : public ISequentialOutStream, public CMyUnknownImp {
 public:
-	UINT64 m_iPos;
 	char* m_pBuf;
-	UINT64 m_nBufSize;
 	BOOL write = TRUE;
 
-	void Init(char* pBuf, UINT64 nBufSize) {
-		m_iPos = 0;
+	void Init(char* pBuf) {
 		m_pBuf = pBuf;
-		m_nBufSize = nBufSize;
 	}
 
 	MY_UNKNOWN_IMP
 	STDMETHOD(Write)(const void* data, UINT32 size, UINT32* processedSize) {
-		if (write)
-			memcpy(m_pBuf + m_iPos, data, size);
-		m_iPos += size;
+		if (write) {
+			memcpy(m_pBuf + archive_offset, data, size);
+			archive_offset += size;
+		}
 		return S_OK;
 	}
 };
@@ -47,12 +45,10 @@ public:
 class extractCallbackImp : public IArchiveExtractCallback, public CMyUnknownImp {
 public:
 	char* m_pBuf;
-	UINT64 m_nBufSize;
 	MemOutStream* pRealStream;
 
-	void Init(char* pBuf, UINT64 nBufSize) {
+	void Init(char* pBuf) {
 		m_pBuf = pBuf;
-		m_nBufSize = nBufSize;
 	}
 
 	MY_UNKNOWN_IMP
@@ -62,7 +58,7 @@ public:
 	STDMETHOD(GetStream)(UINT32 index, ISequentialOutStream** outStream, INT32 askExtractMode) {
 		pRealStream = new MemOutStream;
 		pRealStream->AddRef();
-		pRealStream->Init(m_pBuf, m_nBufSize);
+		pRealStream->Init(m_pBuf);
 		*outStream = pRealStream;
 		return S_OK;
 	}
@@ -155,7 +151,6 @@ extern "C" {
 		getNumberOfFormats(&numf);
 		VariantInit(reinterpret_cast<VARIANTARG*>(&prop));
 		for (UINT32 i = 0; i < numf; i++) {
-			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 			getHandlerProperty2(i, NArchive::NHandlerPropID::kClassID, &prop);
 			codecs.push_back(*(prop.puuid));
 			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
@@ -164,6 +159,7 @@ extern "C" {
 			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 			getHandlerProperty2(i, NArchive::NHandlerPropID::kName, &prop);
 			types.push_back(prop.bstrVal);
+			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		}
 		return TRUE;
 	}
@@ -209,39 +205,44 @@ extern "C" {
 
 	ArcItem getFileInfo(UINT32 index) {
 		ArcItem file;
-		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		archive->GetProperty(index, kpidIsDir, &prop);
 		file.is_dir = prop.boolVal;
+		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		if (file.is_dir) {
 			file.size = 0;
 		} else {
-			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 			archive->GetProperty(index, kpidSize, &prop);
 			file.size = prop.ulVal;
+			VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		}
-		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		archive->GetProperty(index, kpidPath, &prop);
 		file.path = prop.bstrVal;
+		VariantClear(reinterpret_cast<VARIANTARG*>(&prop));
 		return file;
 	}
 
-	void extractToBuf(char* buf, UINT32 index, UINT64 size) {
+	void extractToBuf(char* buf, UINT32* index, UINT32 num_of_file) {
 		extractCallbackImp* extractCallbackSpec = new extractCallbackImp;
 		CMyComPtr<IArchiveExtractCallback> extractCallback(extractCallbackSpec);
-		extractCallbackSpec->Init(buf, size);
-		UINT32 fullIndex[1] = { index };
-		archive->Extract(fullIndex, 1, false, extractCallback);
+		extractCallbackSpec->Init(buf);
+		archive_offset = 0;
+		archive->Extract(index, num_of_file, false, extractCallback);
 	}
 
-	/*int wmain(INT argc, wchar_t* argv) {
+	int wmain(INT argc, wchar_t* argv) {
 		init7z();
 		ArcInfo arc = open(L"examples/test.7z");
+		UINT64 fullSize = 0;
+		UINT32* fullIndex = new UINT32[arc.file_count];
 		for (UINT32 i = 0; i < arc.file_count; i++) {
 			ArcItem file = getFileInfo(i);
-			char* buf = (char*)malloc(file.size);
-			extractToBuf(buf, i, file.size);
-			free(buf);
+			fullSize += file.size;
+			fullIndex[i] = i;
 		}
+		char* buf = (char*) malloc(fullSize);
+		extractToBuf(buf, fullIndex, arc.file_count);
+		delete fullIndex;
+		free(buf);
 		close();
-	}*/
+	}
 }
