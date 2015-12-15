@@ -1,9 +1,12 @@
 [package]
 name = "rust7z"
 version = "0.1.0"
+license = "WTFPL"
 authors = ["nyfair <nyfair2012@gmail.com>"]
+repository = "https://github.com/nyfair/rust7z"
 
+description = "7-zip bindings for Rust"
 build = "build.rs"
 
 [build-dependencies]
-gcc = "*"
+gcc = "0.3.20"

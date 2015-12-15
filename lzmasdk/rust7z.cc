@@ -228,7 +228,7 @@ extern "C" {
 		archive_offset = 0;
 		archive->Extract(index, num_of_file, false, extractCallback);
 	}
-
+/*
 	int wmain(INT argc, wchar_t* argv) {
 		init7z();
 		ArcInfo arc = open(L"examples/test.7z");
@@ -245,4 +245,5 @@ extern "C" {
 		free(buf);
 		close();
 	}
+*/
 }
