@@ -1,6 +1,6 @@
-extern crate gcc;
+extern crate cc;
 
 fn main() {
-    gcc::compile_library("lib7z.a", &["lzmasdk/rust7z.cc"]);
+    cc::Build::new().cpp(true).file("lzmasdk/rust7z.cc").compile("lib7z.a");
     println!("cargo:rustc-flags=-l dylib=oleaut32");
 }

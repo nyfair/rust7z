@@ -50,7 +50,7 @@ fn main() {
 		// extract all(useful for solid archive)
 		let buf = vec![0; full_size as usize];
 		rust7z::extractToBuf(buf.as_ptr(), vec.as_ptr(), file_count);
-		let output = File::create("all.tmp").unwrap();
+		let output = File::create("all.txt").unwrap();
 		let mut writer = BufWriter::new(output);
 		writer.write(&buf).unwrap();
 		writer.flush().unwrap();

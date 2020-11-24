@@ -1,3 +1,4 @@
+#include <string>
 #include <vector>
 
 #include "CPP/Common/MyInitGuid.h"
